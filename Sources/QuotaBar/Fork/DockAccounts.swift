@@ -20,10 +20,57 @@ struct DockAccount: Identifiable {
     var id: String { "\(provider.rawValue)|\(key)" }
 }
 
-/// A row of the strip: a provider's own ring, or one of its other accounts.
-enum DockSlot: Hashable {
-    case provider(ProviderID)
-    case account(String)
+/// A row of the strip: a provider's own ring (its card's account), or one of
+/// its other accounts. `separatorAfter`: the last row of a group.
+struct DockSlot: Identifiable, Hashable {
+    enum Kind: Hashable {
+        case provider(ProviderID)
+        case account(String)
+    }
+
+    let kind: Kind
+    var separatorAfter = false
+
+    /// A provider's row keeps the id upstream's rows had (its raw value), so
+    /// `scrollTo` for a reset still finds it.
+    var id: String {
+        switch kind {
+        case let .provider(id): id.rawValue
+        case let .account(key): "account|\(key)"
+        }
+    }
+
+    var provider: ProviderID? {
+        if case let .provider(id) = kind { id } else { nil }
+    }
+
+    var accountKey: String? {
+        if case let .account(key) = kind { key } else { nil }
+    }
+}
+
+/// The addresses whose accounts sit at the top of the dock, whichever
+/// provider they belong to. Kept in this Mac's defaults, not in the source.
+enum ForkDockTop {
+    static let defaultsKey = "forkDockTopAccounts"
+
+    static var emails: [String] {
+        get { UserDefaults.standard.stringArray(forKey: defaultsKey) ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
+    }
+
+    static func contains(_ email: String?) -> Bool {
+        guard let email, !email.isEmpty else { return false }
+        return emails.contains { $0.caseInsensitiveCompare(email) == .orderedSame }
+    }
+
+    static func toggle(_ email: String) {
+        if contains(email) {
+            emails.removeAll { $0.caseInsensitiveCompare(email) == .orderedSame }
+        } else {
+            emails.append(email)
+        }
+    }
 }
 
 extension UsageStore {
@@ -60,17 +107,62 @@ extension UsageStore {
         }
     }
 
-    var dockSlots: [DockSlot] {
-        dockProviders.flatMap { id in
-            [DockSlot.provider(id)] + dockAccounts(after: id).map { DockSlot.account($0.id) }
+    /// The address of the account `id`'s card reads.
+    func dockCardEmail(_ id: ProviderID) -> String? {
+        switch id {
+        case .claude:
+            return claudeSignIns.card?.email ?? displayPhase(for: .claude)?.snapshot?.account
+        case .codex:
+            if let card = codexCardAccount, let email = codexAccounts.saved.first(where: { $0.id == card })?.email {
+                return email
+            }
+            return displayPhase(for: .codex)?.snapshot?.account
+        default:
+            return nil
         }
     }
 
-    var dockSlotCount: Int { dockSlots.count }
+    /// The strip's rows, top to bottom: the accounts kept at the top
+    /// (`ForkDockTop`), then each provider with other accounts as a group of
+    /// its own, then the providers with one ring each, in the dock's order.
+    /// Groups end with a separator; rows keep one height, so placing a card
+    /// beside a ring stays a matter of its index.
+    var dockLayout: [DockSlot] {
+        var top: [DockSlot.Kind] = []
+        var groups: [[DockSlot.Kind]] = []
+        var singles: [DockSlot.Kind] = []
+        for id in dockProviders {
+            let extras = dockAccounts(after: id)
+            var group: [DockSlot.Kind] = []
+            if ForkDockTop.contains(dockCardEmail(id)) { top.append(.provider(id)) } else { group.append(.provider(id)) }
+            for account in extras {
+                if ForkDockTop.contains(account.email) { top.append(.account(account.id)) } else { group.append(.account(account.id)) }
+            }
+            if extras.isEmpty {
+                singles += group
+            } else {
+                if !singles.isEmpty { groups.append(singles); singles = [] }
+                if !group.isEmpty { groups.append(group) }
+            }
+        }
+        if !singles.isEmpty { groups.append(singles) }
+        let all = ([top] + groups).filter { !$0.isEmpty }
+        var slots: [DockSlot] = []
+        for (index, group) in all.enumerated() {
+            for (row, kind) in group.enumerated() {
+                slots.append(DockSlot(kind: kind, separatorAfter: row == group.count - 1 && index < all.count - 1))
+            }
+        }
+        return slots
+    }
 
-    func dockSlotIndex(of id: ProviderID) -> Int? { dockSlots.firstIndex(of: .provider(id)) }
+    var dockSlotCount: Int { dockLayout.count }
 
-    func dockSlotIndex(ofAccount key: String) -> Int? { dockSlots.firstIndex(of: .account(key)) }
+    func dockSlotIndex(of id: ProviderID) -> Int? { dockLayout.firstIndex { $0.provider == id } }
+
+    func dockSlotIndex(ofAccount key: String) -> Int? { dockLayout.firstIndex { $0.accountKey == key } }
+
+    func dockSlot(of id: ProviderID) -> DockSlot? { dockLayout.first { $0.provider == id } }
 
     func dockAccount(_ key: String) -> DockAccount? {
         for id in dockProviders {
@@ -93,30 +185,67 @@ extension UsageStore {
     }
 }
 
-/// The rings of `provider`'s other accounts, placed by EdgeDockView right
-/// after the provider's own ring. Observes the side models itself: the dock
-/// view only observes the store.
-struct DockAccountRings: View {
+/// An account's ring, for an `.account` row of `dockLayout`.
+struct DockAccountRing: View {
     @ObservedObject var store: UsageStore
-    @ObservedObject var claude: ClaudeSignInsModel
-    @ObservedObject var codex: CodexAccountsModel
-    let provider: ProviderID
+    let slot: DockSlot
     let hoveredKey: String?
     let onHover: (String, HoverPhase) -> Void
     let onTap: (String) -> Void
 
     var body: some View {
-        ForEach(store.dockAccounts(after: provider)) { account in
+        if let key = slot.accountKey, let account = store.dockAccount(key) {
             ProviderRing(
-                id: provider,
+                id: account.provider,
                 percent: store.dockHeadlinePercent(account),
                 mode: store.meterMode,
                 showsLabel: false,
                 selected: false,
                 hovered: hoveredKey == account.id,
                 selectionDot: true)
+                .overlay(alignment: .bottom) { DockGroupSeparator(shown: slot.separatorAfter) }
                 .onContinuousHover { onHover(account.id, $0) }
                 .onTapGesture { onTap(account.id) }
+                .contextMenu {
+                    Button(L10n.t("Refresh \(account.provider.displayName)", "刷新 \(account.provider.displayName)")) { store.refresh(account.provider) }
+                    Divider()
+                    DockTopMenuItem(store: store, email: account.email)
+                }
+        }
+    }
+}
+
+/// A thin rule in the gap under a group's last ring. Drawn over the gap, not
+/// in the stack, so every row keeps the height the strip is laid out by.
+struct DockGroupSeparator: View {
+    let shown: Bool
+
+    var body: some View {
+        if shown {
+            Capsule()
+                .fill(Color.white.opacity(0.22))
+                .frame(width: 28, height: 1.5)
+                .offset(y: (Design.space3 + 1.5) / 2)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Keep this address's accounts at the top of the dock, or stop.
+struct DockTopMenuItem: View {
+    @ObservedObject var store: UsageStore
+    let email: String?
+
+    var body: some View {
+        if let email, !email.isEmpty {
+            let on = ForkDockTop.contains(email)
+            Button(on
+                ? L10n.t("Stop keeping \(email) at the top", "取消置顶 \(email)")
+                : L10n.t("Keep \(email) at the top", "置顶 \(email)"))
+            {
+                ForkDockTop.toggle(email)
+                store.objectWillChange.send()
+            }
         }
     }
 }

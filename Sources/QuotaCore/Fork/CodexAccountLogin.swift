@@ -37,6 +37,17 @@ public enum CodexAccountLogin {
         """
     }
 
+    static let folderPrefix = ".codex-quotabar-login-"
+
+    /// Every login folder this Mac has, finished or not. A browser sign-in
+    /// can take longer than any wait, and the app can quit meanwhile; the
+    /// folders are what is left to pick up.
+    public static func folders(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: home.path)) ?? [])
+            .filter { $0.hasPrefix(folderPrefix) }
+            .map { home.appendingPathComponent($0, isDirectory: true) }
+    }
+
     /// The sign-in `codex login` left in `directory`, once it has.
     public static func signIn(in directory: URL) -> CodexAuthFile? {
         (try? Data(contentsOf: directory.appendingPathComponent("auth.json"))).flatMap(CodexAuthFile.init)
@@ -49,8 +60,34 @@ public enum CodexAccountLogin {
 
 extension CodexAccountVault {
     /// Keeps a sign-in made outside ~/.codex, as if it had been saved there.
+    /// Throws unless both the sign-in and the list of accounts were written:
+    /// the list is what Settings and the dock read.
     @discardableResult
     public func keep(signIn file: CodexAuthFile, now: Date = .now) throws -> CodexAccount {
-        try keep(file, now: now)
+        let account = try keep(file, now: now)
+        guard accounts().contains(where: { $0.id == account.id }) else { throw CodexAccountError.keychain }
+        return account
+    }
+
+    /// Keeps every finished login folder's sign-in and removes the folder;
+    /// a folder whose sign-in could not be kept stays for the next try. An
+    /// unfinished one is removed after a day.
+    public func importLogins(home: URL = FileManager.default.homeDirectoryForCurrentUser, now: Date = .now) -> (kept: [CodexAccount], failed: [Error]) {
+        var kept: [CodexAccount] = []
+        var failed: [Error] = []
+        for folder in CodexAccountLogin.folders(home: home) {
+            if let file = CodexAccountLogin.signIn(in: folder) {
+                do {
+                    kept.append(try keep(signIn: file, now: now))
+                    CodexAccountLogin.discard(folder)
+                } catch {
+                    failed.append(error)
+                }
+            } else if let created = (try? folder.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
+                      now.timeIntervalSince(created) > 86_400 {
+                CodexAccountLogin.discard(folder)
+            }
+        }
+        return (kept, failed)
     }
 }

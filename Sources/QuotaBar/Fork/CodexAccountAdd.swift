@@ -22,24 +22,29 @@ extension UsageStore {
         codexSwitchNotice = L10n.t(
             "Sign in in the Terminal window; the account is kept here once it is done.",
             "请在终端窗口里登录，完成后账号会自动保存。")
+        // Picked up at once while this waits; a sign-in finished later is
+        // picked up by the next Codex refresh (`importCodexLogins`), so the
+        // folder is never removed from under a login still in progress.
         Task { [weak self] in
-            defer { CodexAccountLogin.discard(prepared.directory) }
-            // Up to ten minutes, as the Claude login waits.
             for _ in 0..<300 {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                guard let file = CodexAccountLogin.signIn(in: prepared.directory) else { continue }
-                guard let self else { return }
-                do {
-                    let account = try await self.codexAccounts.vault.keep(signIn: file)
-                    await self.codexAccounts.readOthers()
-                    let name = self.codexAccounts.label(account, masked: self.isPrivacyMasked)
-                    self.codexSwitchNotice = L10n.t("Saved \(name).", "已保存 \(name)。")
-                } catch {
-                    self.codexSwitchNotice = error.localizedDescription
-                }
+                guard CodexAccountLogin.signIn(in: prepared.directory) != nil else { continue }
+                await self?.importCodexLogins()
                 return
             }
-            self?.codexSwitchNotice = nil
+        }
+    }
+
+    /// Keeps every finished Add-account login, then reads the accounts again.
+    func importCodexLogins() async {
+        let result = await codexAccounts.vault.importLogins()
+        guard !result.kept.isEmpty || !result.failed.isEmpty else { return }
+        await codexAccounts.readOthers()
+        if let error = result.failed.first {
+            codexSwitchNotice = error.localizedDescription
+        } else {
+            let names = result.kept.map { codexAccounts.label($0, masked: isPrivacyMasked) }.joined(separator: ", ")
+            codexSwitchNotice = L10n.t("Saved \(names).", "已保存 \(names)。")
         }
     }
 }

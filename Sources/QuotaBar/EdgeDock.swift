@@ -518,6 +518,9 @@ struct EdgeDockView: View {
     @State private var hovered: ProviderID?
     /// FORK(flosrn): the account ring under the pointer (`DockAccount.id`).
     @State private var hoveredAccount: String?
+    /// FORK(flosrn): bumped when the Claude or Codex account lists change, so
+    /// the strip's rows (`store.dockLayout`) follow them.
+    @State private var accountsRevision = 0
     /// The ring that was clicked: its card is the full one, with the pin
     /// row, until the strip closes.
     @State private var detail: ProviderID?
@@ -650,6 +653,8 @@ struct EdgeDockView: View {
             guard id != nil || hoveredAccount == nil else { return } // FORK(flosrn)
             presentCallout(for: id)
         }
+        .onReceive(store.claudeSignIns.objectWillChange) { _ in accountsRevision &+= 1 } // FORK(flosrn)
+        .onReceive(store.codexAccounts.objectWillChange) { _ in accountsRevision &+= 1 } // FORK(flosrn)
         // FORK(flosrn): an account ring's card.
         .onChange(of: hoveredAccount) { _, key in
             guard key != nil || hovered == nil else { return }
@@ -864,7 +869,9 @@ struct EdgeDockView: View {
 
     private var rings: some View {
         VStack(spacing: Design.space3) {
-            ForEach(store.dockProviders) { id in
+            let _ = accountsRevision // FORK(flosrn)
+            ForEach(store.dockLayout) { slot in // FORK(flosrn): accounts kept at the top, then groups
+                if let id = slot.provider { // FORK(flosrn)
                 ProviderRing(
                     id: id,
                     percent: ringOverride[id] ?? store.headlinePercent(for: id, on: .dock),
@@ -886,6 +893,7 @@ struct EdgeDockView: View {
                         Button(L10n.t("Refresh \(id.displayName)", "刷新 \(id.displayName)")) { store.refresh(id) }
                         Divider()
                         ProviderQuickMenus(store: store, id: id)
+                        DockTopMenuItem(store: store, email: store.dockCardEmail(id)) // FORK(flosrn)
                         Divider()
                         Button(L10n.t("Hide from the dock", "在停靠条中隐藏")) { store.setHidden(true, id, on: .dock) }
                         let hiddenHere = store.hiddenProviders(on: .dock)
@@ -914,10 +922,11 @@ struct EdgeDockView: View {
                         hovered = id
                         presentCallout(for: id)
                     }
-                // FORK(flosrn): the provider's other accounts, one ring each.
-                DockAccountRings(
-                    store: store, claude: store.claudeSignIns, codex: store.codexAccounts,
-                    provider: id, hoveredKey: hoveredAccount,
+                    .overlay(alignment: .bottom) { DockGroupSeparator(shown: slot.separatorAfter) } // FORK(flosrn)
+                } // FORK(flosrn)
+                // FORK(flosrn): another account's ring.
+                DockAccountRing(
+                    store: store, slot: slot, hoveredKey: hoveredAccount,
                     onHover: accountHover, onTap: { hovered = nil; hoveredAccount = $0 })
             }
         }

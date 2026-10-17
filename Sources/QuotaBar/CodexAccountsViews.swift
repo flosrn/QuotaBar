@@ -234,6 +234,6 @@ struct CodexAccountsSettings: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .task { await accounts.reload() }
+        .task { await store.importCodexLogins(); await accounts.reload() } // FORK(flosrn)
     }
 }

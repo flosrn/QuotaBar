@@ -79,4 +79,28 @@ final class ForkCodexAccountLoginTests: XCTestCase {
         CodexAccountLogin.discard(prepared.directory)
         XCTAssertFalse(FileManager.default.fileExists(atPath: prepared.directory.path))
     }
+
+    /// A sign-in finished after the app stopped waiting — the folder even
+    /// re-made by `codex login` — is still kept, and only then removed.
+    func testLateLoginsAreSweptAndUnfinishedOnesWait() async throws {
+        let home = directory.appendingPathComponent("home")
+        let finished = home.appendingPathComponent(".codex-quotabar-login-late")
+        let waiting = home.appendingPathComponent(".codex-quotabar-login-waiting")
+        try FileManager.default.createDirectory(at: finished, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: waiting, withIntermediateDirectories: true)
+        try authFile("acct-late", email: "late@example.com", refresh: "rt-late").write(to: finished.appendingPathComponent("auth.json"))
+        let vault = CodexAccountVault(liveURL: live, storage: MemoryCredentialStorage(), refresher: { _ in
+            XCTFail("no refresh expected"); return .init()
+        })
+
+        // The real clock: the folders were made just now, and an empty one is cleared only after a day.
+        let result = await vault.importLogins(home: home, now: Date())
+
+        XCTAssertEqual(result.kept.map(\.email), ["late@example.com"])
+        XCTAssertTrue(result.failed.isEmpty)
+        let accounts = await vault.accounts()
+        XCTAssertEqual(accounts.map(\.id), ["acct-late"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: finished.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: waiting.path), "a login still in progress is left alone")
+    }
 }
