@@ -164,6 +164,15 @@ extension UsageStore {
 
     func dockSlot(of id: ProviderID) -> DockSlot? { dockLayout.first { $0.provider == id } }
 
+    /// The extra room the group gaps above row `index` take: what the
+    /// coordinator adds to `index × cellHeight` to find that ring.
+    func dockGroupOffset(before index: Int) -> CGFloat {
+        CGFloat(dockLayout.prefix(index).filter(\.separatorAfter).count) * DockGroupSeparator.extraGap
+    }
+
+    /// The extra height of the whole strip for its group gaps.
+    var dockGroupsHeight: CGFloat { dockGroupOffset(before: dockSlotCount) }
+
     func dockAccount(_ key: String) -> DockAccount? {
         for id in dockProviders {
             if let account = dockAccounts(after: id).first(where: { $0.id == key }) { return account }
@@ -204,6 +213,7 @@ struct DockAccountRing: View {
                 hovered: hoveredKey == account.id,
                 selectionDot: true)
                 .overlay(alignment: .bottom) { DockGroupSeparator(shown: slot.separatorAfter) }
+                .padding(.bottom, slot.separatorAfter ? DockGroupSeparator.extraGap : 0)
                 .onContinuousHover { onHover(account.id, $0) }
                 .onTapGesture { onTap(account.id) }
                 .contextMenu {
@@ -215,18 +225,42 @@ struct DockAccountRing: View {
     }
 }
 
-/// A thin rule in the gap under a group's last ring. Drawn over the gap, not
-/// in the stack, so every row keeps the height the strip is laid out by.
+/// The rule between two groups of rings, in a gap `extraGap` wider than the
+/// one between rings of a group, so the groups read as groups before the
+/// rule is even seen. Drawn over the gap, not in the stack.
+///
+/// Placed by the discs, not by the cells: a cell is the disc and, under it,
+/// the row kept for the selection dot, empty on every ring but one. Centred
+/// on the cell's gap, the rule sat twice as far from the disc above as from
+/// the disc below. Its ends fade, as the strip's own ends do when it scrolls.
 struct DockGroupSeparator: View {
     let shown: Bool
 
+    static let length: CGFloat = 24
+    static let thickness: CGFloat = 1
+    static let extraGap: CGFloat = Design.space2
+
+    /// From the cell's bottom to the middle of the empty space between this
+    /// disc and the next: the disc ends `dotRow` above the cell's bottom, the
+    /// next disc starts `Design.space3 + extraGap` below it.
+    static var gapMiddleBelowCell: CGFloat {
+        let dotRow = ProviderRing.markSpacing + ProviderRing.markSize
+        return (Design.space3 + extraGap - dotRow) / 2
+    }
+
     var body: some View {
         if shown {
-            Capsule()
-                .fill(Color.white.opacity(0.22))
-                .frame(width: 28, height: 1.5)
-                .offset(y: (Design.space3 + 1.5) / 2)
+            LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0), location: 0),
+                    .init(color: .white.opacity(0.28), location: 0.5),
+                    .init(color: .white.opacity(0), location: 1),
+                ],
+                startPoint: .leading, endPoint: .trailing)
+                .frame(width: Self.length, height: Self.thickness)
+                .offset(y: Self.gapMiddleBelowCell + Self.thickness / 2)
                 .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 }

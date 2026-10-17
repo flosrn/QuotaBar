@@ -214,7 +214,7 @@ final class EdgeDockCoordinator {
         let stripFrame = strip.frame
         // The disc's centre, not the cell's: the cell has the dot row under
         // the disc, so its middle sits 5pt low.
-        let centreFromTop = Self.stripInsetTop + CGFloat(index) * Self.cellHeight + ProviderRing.defaultDiameter / 2 - scrollOffset
+        let centreFromTop = Self.stripInsetTop + CGFloat(index) * Self.cellHeight + (store?.dockGroupOffset(before: index) ?? 0) + ProviderRing.defaultDiameter / 2 - scrollOffset // FORK(flosrn): + group gaps
         // A ring scrolled half out of view still gets its card, held level
         // with the strip rather than floating past its end.
         let centreY = min(max(stripFrame.maxY - centreFromTop, stripFrame.minY), stripFrame.maxY)
@@ -422,7 +422,7 @@ final class EdgeDockCoordinator {
     private var measuredHeights: [Int: CGFloat] = [:]
 
     private func stripHeight(providers count: Int) -> CGFloat {
-        measuredHeights[count] ?? Self.computedStripHeight(providers: count)
+        measuredHeights[count] ?? Self.computedStripHeight(providers: count) + (store?.dockGroupsHeight ?? 0) // FORK(flosrn)
     }
     /// Places the window: always the full strip, flush against the edge and
     /// centred on the handle, held on screen at the extremes. Folding and
@@ -923,6 +923,7 @@ struct EdgeDockView: View {
                         presentCallout(for: id)
                     }
                     .overlay(alignment: .bottom) { DockGroupSeparator(shown: slot.separatorAfter) } // FORK(flosrn)
+                    .padding(.bottom, slot.separatorAfter ? DockGroupSeparator.extraGap : 0) // FORK(flosrn)
                 } // FORK(flosrn)
                 // FORK(flosrn): another account's ring.
                 DockAccountRing(
@@ -950,7 +951,7 @@ struct EdgeDockView: View {
     /// faint while the list sits still, brighter while it moves. The ends
     /// fade into the black where there is more to scroll to.
     private func strip(height: CGFloat) -> some View {
-        let content = EdgeDockCoordinator.computedStripHeight(providers: store.dockSlotCount) // FORK(flosrn)
+        let content = EdgeDockCoordinator.computedStripHeight(providers: store.dockSlotCount) + store.dockGroupsHeight // FORK(flosrn)
         let overflow = content > height + 1
         let maxOffset = max(1, content - height)
         return ScrollViewReader { reader in
