@@ -28,6 +28,11 @@ providers, read and worked out on your own Mac. No account, no telemetry.
 
 </div>
 
+> **Fork (flosrn/QuotaBar).** This branch adds one edge-dock ring per Claude and Codex
+> account, a removable default Claude sign-in, and Codex › Add account without switching
+> the CLI. It is rebased onto each upstream release with `Scripts/fork/sync.sh`. See
+> [FORK.md](FORK.md). Upstream: [QuotaBar/QuotaBar](https://github.com/QuotaBar/QuotaBar).
+
 ---
 
 ## Install
