@@ -279,7 +279,8 @@ struct UpdateCard: View {
 
     @ViewBuilder
     private func buttons(primary release: UpdateRelease?) -> some View {
-        if store.updateIsManagedByHomebrew, release != nil {
+        if ForkBuild.isFork, release != nil { ForkUpdateNotice(store: store) } // FORK(flosrn)
+        else if store.updateIsManagedByHomebrew, release != nil {
             VStack(alignment: .leading, spacing: Design.space2) {
                 Text(L10n.t("Homebrew installed this copy, so Homebrew updates it:", "这份是 Homebrew 安装的，请用 Homebrew 更新："))
                     .font(.system(size: 12))

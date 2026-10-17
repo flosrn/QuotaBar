@@ -52,8 +52,8 @@ extension ExperiencePrefs {
 
 extension ExperiencePrefs {
     /// Forget only QuotaBar's references, leaving Claude Code's login intact.
+    /// FORK(flosrn): the default sign-in can be forgotten like any other.
     public mutating func forgetClaudeSignIn(_ service: String) {
-        guard service != LocalCredentials.claudeService else { return }
         if !hiddenClaudeSignIns.contains(service) { hiddenClaudeSignIns.append(service) }
         claudeAccountNames.removeValue(forKey: service)
         if claudeSignInChoice == service { claudeSignInChoice = nil }

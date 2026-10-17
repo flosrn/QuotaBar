@@ -395,7 +395,7 @@ final class EdgeDockCoordinator {
         // and reports *that*. Recording it would make the next reveal aim at
         // the handle's height and then correct itself.
         guard expanded || alwaysVisible else { return }
-        let count = store?.dockProviders.count ?? 0
+        let count = store?.dockSlotCount ?? 0 // FORK(flosrn): account rings count too
         let measured = max(80, height)
         guard measuredHeights[count] != measured else { return }
         measuredHeights[count] = measured
@@ -436,7 +436,7 @@ final class EdgeDockCoordinator {
         // As tall as the rings need, up to the screen less its margins; the
         // rest scrolls inside the strip.
         let panelHeight = min(
-            stripHeight(providers: store?.dockProviders.count ?? 0),
+            stripHeight(providers: store?.dockSlotCount ?? 0), // FORK(flosrn)
             max(Self.handleHeight, visible.height - Self.screenMargin * 2))
         let x = config.dockEdge == .right ? visible.maxX - panelWidth : visible.minX
 
@@ -516,6 +516,8 @@ struct EdgeDockView: View {
     @State private var resetTask: Task<Void, Never>?
     @State private var expanded = false
     @State private var hovered: ProviderID?
+    /// FORK(flosrn): the account ring under the pointer (`DockAccount.id`).
+    @State private var hoveredAccount: String?
     /// The ring that was clicked: its card is the full one, with the pin
     /// row, until the strip closes.
     @State private var detail: ProviderID?
@@ -645,7 +647,13 @@ struct EdgeDockView: View {
             coordinator.openFromHandle = { coordinator.setExpanded(true) { expanded = $0 } }
         }
         .onChange(of: hovered) { _, id in
+            guard id != nil || hoveredAccount == nil else { return } // FORK(flosrn)
             presentCallout(for: id)
+        }
+        // FORK(flosrn): an account ring's card.
+        .onChange(of: hoveredAccount) { _, key in
+            guard key != nil || hovered == nil else { return }
+            presentAccountCallout(for: key)
         }
         .onChange(of: resets.current) { _, banner in
             if let banner { play(banner) }
@@ -655,6 +663,7 @@ struct EdgeDockView: View {
             if !isOpen {
                 coordinator.hideCallout()
                 hovered = nil
+                hoveredAccount = nil // FORK(flosrn)
                 detail = nil
                 // Folded, the rings are rebuilt at the top when the strip next
                 // opens; kept open, they stay where they were scrolled.
@@ -714,7 +723,7 @@ struct EdgeDockView: View {
     }
 
     private func presentCallout(for id: ProviderID?) {
-        let index = id.flatMap { store.dockProviders.firstIndex(of: $0) }
+        let index = id.flatMap { store.dockSlotIndex(of: $0) } // FORK(flosrn)
         let isDetail = id != nil && detail == id
         // Everything that changes the card's height: its data (the tick moves
         // on every refresh), the preferences, the bar style, and the reason
@@ -722,7 +731,7 @@ struct EdgeDockView: View {
         let sizeKey = id.map { "\($0.rawValue)|\(isDetail)|\(store.tick)|\(store.experienceRevision)|\(store.meterStyle.rawValue)|\(store.serviceStatus[$0]?.level.rawValue ?? "")|\(store.displayPhase(for: $0)?.explanation ?? "")" }
         coordinator.showCallout(
             at: index,
-            total: store.dockProviders.count,
+            total: store.dockSlotCount, // FORK(flosrn)
             width: isDetail ? EdgeDockCoordinator.detailWidth : EdgeDockCoordinator.calloutWidth,
             sizeKey: sizeKey)
         {
@@ -797,6 +806,7 @@ struct EdgeDockView: View {
             }
             hoverClearTask?.cancel()
             if hovered != id { hovered = id }
+            hoveredAccount = nil // FORK(flosrn)
         case .ended:
             if hovered == id { scheduleHoverClear() }
         }
@@ -818,10 +828,10 @@ struct EdgeDockView: View {
             withAnimation(Motion.animation(.timingCurve(0.22, 0.9, 0.24, 1, duration: 1.0).delay(0.15))) {
                 ringOverride[id] = banner.usedNow
             }
-            if hovered == nil, let index = store.dockProviders.firstIndex(of: id) {
+            if hovered == nil, let index = store.dockSlotIndex(of: id) { // FORK(flosrn)
                 coordinator.showCallout(
                     at: index,
-                    total: store.dockProviders.count,
+                    total: store.dockSlotCount, // FORK(flosrn)
                     width: EdgeDockCoordinator.calloutWidth,
                     sizeKey: "reset|\(banner.id)")
                 {
@@ -848,6 +858,7 @@ struct EdgeDockView: View {
             try? await Task.sleep(for: .milliseconds(280))
             guard !Task.isCancelled, !coordinator.calloutHovered else { return }
             hovered = nil
+            hoveredAccount = nil // FORK(flosrn)
         }
     }
 
@@ -903,6 +914,11 @@ struct EdgeDockView: View {
                         hovered = id
                         presentCallout(for: id)
                     }
+                // FORK(flosrn): the provider's other accounts, one ring each.
+                DockAccountRings(
+                    store: store, claude: store.claudeSignIns, codex: store.codexAccounts,
+                    provider: id, hoveredKey: hoveredAccount,
+                    onHover: accountHover, onTap: { hovered = nil; hoveredAccount = $0 })
             }
         }
         // Toward the edge, by the border's half-width; layout is untouched,
@@ -925,7 +941,7 @@ struct EdgeDockView: View {
     /// faint while the list sits still, brighter while it moves. The ends
     /// fade into the black where there is more to scroll to.
     private func strip(height: CGFloat) -> some View {
-        let content = EdgeDockCoordinator.computedStripHeight(providers: store.dockProviders.count)
+        let content = EdgeDockCoordinator.computedStripHeight(providers: store.dockSlotCount) // FORK(flosrn)
         let overflow = content > height + 1
         let maxOffset = max(1, content - height)
         return ScrollViewReader { reader in
@@ -980,8 +996,9 @@ struct EdgeDockView: View {
     /// The card belongs to a ring that has just moved; it goes until the
     /// pointer settles on a ring again.
     private func noteScrolled() {
-        if hovered != nil, playing == nil {
+        if hovered != nil || hoveredAccount != nil, playing == nil { // FORK(flosrn)
             hovered = nil
+            hoveredAccount = nil
             coordinator.hideCallout()
         }
         scrolling = true
@@ -990,6 +1007,44 @@ struct EdgeDockView: View {
             try? await Task.sleep(for: .milliseconds(900))
             guard !Task.isCancelled else { return }
             scrolling = false
+        }
+    }
+
+    // MARK: FORK(flosrn) — account rings
+
+    /// `ringHover` for an account's ring: the same arming, its own card.
+    private func accountHover(_ key: String, _ phase: HoverPhase) {
+        switch phase {
+        case .active:
+            let pinnedOpen = coordinator.alwaysVisible && !expanded
+            guard armed || pinnedOpen else { return }
+            if let origin = armOrigin {
+                let here = NSEvent.mouseLocation
+                guard hypot(here.x - origin.x, here.y - origin.y) >= 6 else { return }
+                armOrigin = nil
+            }
+            hoverClearTask?.cancel()
+            hovered = nil
+            if hoveredAccount != key { hoveredAccount = key }
+        case .ended:
+            if hoveredAccount == key { scheduleHoverClear() }
+        }
+    }
+
+    private func presentAccountCallout(for key: String?) {
+        let account = key.flatMap { store.dockAccount($0) }
+        let index = account.flatMap { store.dockSlotIndex(ofAccount: $0.id) }
+        let sizeKey = account.map { "account|\($0.id)|\(store.tick)|\(store.experienceRevision)|\(store.meterStyle.rawValue)|\($0.error ?? "")" }
+        coordinator.showCallout(
+            at: index,
+            total: store.dockSlotCount,
+            width: EdgeDockCoordinator.calloutWidth,
+            sizeKey: sizeKey)
+        {
+            if let account {
+                DockAccountCallout(store: store, account: account)
+                    .onHover { coordinator.setCalloutHovered($0) }
+            }
         }
     }
 }

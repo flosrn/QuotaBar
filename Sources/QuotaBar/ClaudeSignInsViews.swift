@@ -193,11 +193,10 @@ struct ClaudeSignInsSettings: View {
                                 .glassAction(compact: true)
                                 .disabled(service != LocalCredentials.claudeService && reading?.snapshot == nil)
                         }
-                        if service != LocalCredentials.claudeService {
-                            Button(L10n.t("Remove", "移除")) { store.removeClaudeSignIn(service) }
-                                .glassAction(compact: true)
-                                .help(L10n.t("Forget in QuotaBar; Claude Code's login and files stay intact.", "只从 QuotaBar 移除，保留 Claude Code 的登录和文件。"))
-                        }
+                        // FORK(flosrn): the default sign-in can be removed too.
+                        Button(L10n.t("Remove", "移除")) { store.removeClaudeSignIn(service) }
+                            .glassAction(compact: true)
+                            .help(L10n.t("Forget in QuotaBar; Claude Code's login and files stay intact.", "只从 QuotaBar 移除，保留 Claude Code 的登录和文件。"))
                     }
                     if store.claudeLoginsPending.contains(service) {
                         Text(L10n.t("Waiting for browser login; updates automatically when complete.", "等待浏览器登录，完成后会自动更新。"))

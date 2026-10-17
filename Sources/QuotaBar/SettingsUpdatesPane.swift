@@ -60,7 +60,7 @@ struct UpdatesPane: View {
                     get: { store.experience.betaUpdates },
                     set: { value in store.updateExperience { $0.betaUpdates = value } }))
             if store.updateIsManagedByHomebrew {
-                SettingFootnote(L10n.t("Updated by Homebrew.", "由 Homebrew 更新。"))
+                SettingFootnote(ForkBuild.isFork ? ForkBuild.footnote : L10n.t("Updated by Homebrew.", "由 Homebrew 更新。")) // FORK(flosrn)
             }
         }
     }

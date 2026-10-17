@@ -59,7 +59,7 @@ public enum ClaudeSignIns {
     public static func readOthers(card cardService: String = LocalCredentials.claudeService, now: Date = .now, excluding: [String] = [], registered: [String] = [], deduplicate: Bool = true) async -> [Reading] {
         let extras = visibleServices(extras: LocalCredentials.claudeExtraServices(), registered: registered, excluding: excluding)
         guard !extras.isEmpty else { return [] }
-        let services = ([LocalCredentials.claudeService] + extras).filter { $0 != cardService }
+        let services = ([LocalCredentials.claudeService] + extras).filter { $0 != cardService && !excluding.contains($0) } // FORK(flosrn): a hidden default too
         let card = await cardIdentity(service: cardService)
         var readings: [Reading] = []
         await withTaskGroup(of: Reading.self) { group in

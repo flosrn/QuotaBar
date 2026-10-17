@@ -906,7 +906,7 @@ final class UsageStore: ObservableObject {
 
     /// Homebrew owns the install; replacing the bundle behind its back would
     /// desync its metadata.
-    var updateIsManagedByHomebrew: Bool { Updater.isManagedByHomebrew() }
+    var updateIsManagedByHomebrew: Bool { ForkBuild.isFork || Updater.isManagedByHomebrew() } // FORK(flosrn): updated by Scripts/fork/sync.sh
 
     var checksForUpdates: Bool { config.checksForUpdates }
     var updatePolicy: UpdatePolicy { config.updatePolicy }

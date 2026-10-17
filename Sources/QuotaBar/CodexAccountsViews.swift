@@ -218,6 +218,8 @@ struct CodexAccountsSettings: View {
                     : L10n.t("Save Current Account", "保存当前账号")) { store.saveCurrentCodexAccount() }
                     .glassAction(prominent: !accounts.isActiveSaved)
                     .disabled(accounts.activeID == nil || accounts.working)
+                Button(L10n.t("Add account", "添加账号")) { store.addCodexAccount() } // FORK(flosrn)
+                    .glassAction(compact: true)
                 if let notice = store.codexSwitchNotice {
                     Text(notice)
                         .font(.system(size: 11))

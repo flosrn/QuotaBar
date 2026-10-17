@@ -134,10 +134,11 @@ extension UsageStore {
     }
 
     func removeClaudeSignIn(_ service: String) {
-        guard service != LocalCredentials.claudeService else { return }
+        // FORK(flosrn): no guard on the default sign-in; the card moves off it.
+        let listed = claudeSignIns.services
         claudeLoginTasks.removeValue(forKey: service)?.cancel()
         claudeLoginsPending.remove(service)
-        changeAccounts { updateExperience { $0.forgetClaudeSignIn(service) } }
+        changeAccounts { updateExperience { $0.forgetClaudeSignIn(service); $0.forkMoveOffHiddenClaudeSignIns(available: listed) } }
         claudeSignIns.forget(service)
         accountReadings = accountReadings.filter { !$0.key.hasPrefix("claude|\(service)|") }
         Task { await readClaudeSignIns(force: true) }

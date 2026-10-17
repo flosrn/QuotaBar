@@ -264,7 +264,7 @@ public actor CodexAccountVault {
     // MARK: Storage
 
     @discardableResult
-    private func keep(_ file: CodexAuthFile, now: Date) throws -> CodexAccount {
+    func keep(_ file: CodexAuthFile, now: Date) throws -> CodexAccount { // FORK(flosrn): internal, for Fork/CodexAccountLogin.swift
         guard storage.write(String(decoding: file.data, as: UTF8.self), account: Self.blobKey(file.accountID)) else {
             throw CodexAccountError.keychain
         }

@@ -51,7 +51,7 @@ final class ClaudeAccountSetupTests: XCTestCase {
         prefs.accountProfiles = []
         XCTAssertEqual(prefs.claudeItem, LocalCredentials.claudeService)
         prefs.forgetClaudeSignIn(LocalCredentials.claudeService)
-        XCTAssertFalse(prefs.hiddenClaudeSignIns.contains(LocalCredentials.claudeService))
+        XCTAssertTrue(prefs.hiddenClaudeSignIns.contains(LocalCredentials.claudeService)) // FORK(flosrn): the default can be forgotten too
     }
 
     func testDefaultIdentityIsRecognizedWithoutASecondDirectoryOrLiveToken() throws {

@@ -517,6 +517,8 @@ public struct ClaudeProvider: QuotaProvider {
     public init() {}
 
     public func isConfigured(config: ConfigStore) -> Bool {
+        // FORK(flosrn): the card may read a config dir's sign-in with the default one removed.
+        if config.experience.claudeItem != LocalCredentials.claudeService { return true }
         switch config.experience.claudeSource {
         case .oauth: return LocalCredentials.claudeOAuthToken() != nil
         case .web: return ClaudeWebSession.exists
